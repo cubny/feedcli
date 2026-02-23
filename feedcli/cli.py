@@ -80,6 +80,23 @@ def main(ctx):
     ctx.obj["session"] = get_session()
 
 
+@main.command()
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
+def completion(shell):
+    """Output the shell completion script."""
+    from click.shell_completion import get_completion_class
+
+    cls = get_completion_class(shell)
+    if cls is None:
+        click.echo(f"Shell {shell} not supported.", err=True)
+        sys.exit(1)
+
+    prog_name = "feedcli"
+    complete_var = f"_{prog_name.upper()}_COMPLETE"
+    comp = cls(main, {}, prog_name, complete_var)
+    click.echo(comp.source())
+
+
 @main.group()
 def feeds():
     """Manage feed subscriptions."""

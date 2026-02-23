@@ -58,6 +58,27 @@ for item in items:
     mark_read(item.id)
 ```
 
+### Shell Autocompletion
+
+`feedcli` supports shell autocompletion for bash, zsh, and fish.
+
+To enable it, add the following to your shell's configuration file (e.g., `~/.bashrc`, `~/.zshrc`):
+
+**Bash:**
+```bash
+eval "$(feedcli completion bash)"
+```
+
+**Zsh:**
+```zsh
+eval "$(feedcli completion zsh)"
+```
+
+**Fish:**
+```fish
+feedcli completion fish | source
+```
+
 ## Documentation
 
 - [AI Agent Skill Documentation](skill/SKILL.md)
