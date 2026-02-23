@@ -1,6 +1,6 @@
 """Tests for feedcli.fetcher — feed fetching and parsing."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -13,7 +13,7 @@ from feedcli.models import Feed, Item
 @pytest.fixture
 def feed(db_session):
     """Create a feed in the test DB."""
-    f = Feed(url="https://example.com/feed.xml", title="Test Feed", created_at=datetime.utcnow())
+    f = Feed(url="https://example.com/feed.xml", title="Test Feed", created_at=datetime.now(timezone.utc))
     db_session.add(f)
     db_session.commit()
     return f
@@ -108,7 +108,7 @@ class TestFetchFeed:
     @respx.mock
     def test_updates_feed_title_from_parsed(self, db_session, sample_rss):
         """Feed with no title gets title from parsed feed."""
-        f = Feed(url="https://example.com/feed2.xml", title=None, created_at=datetime.utcnow())
+        f = Feed(url="https://example.com/feed2.xml", title=None, created_at=datetime.now(timezone.utc))
         db_session.add(f)
         db_session.commit()
 

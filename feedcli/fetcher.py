@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import feedparser
 import httpx
@@ -29,11 +29,11 @@ def fetch_feed(feed: Feed, session: Session, timeout: int = 30) -> int:
     except (httpx.HTTPError, httpx.InvalidURL) as e:
         feed.last_error = str(e)
         feed.error_count = (feed.error_count or 0) + 1
-        feed.last_fetched_at = datetime.utcnow()
+        feed.last_fetched_at = datetime.now(timezone.utc)
         session.commit()
         return 0
 
-    feed.last_fetched_at = datetime.utcnow()
+    feed.last_fetched_at = datetime.now(timezone.utc)
 
     if resp.status_code == 304:
         # Not modified
@@ -70,7 +70,7 @@ def fetch_feed(feed: Feed, session: Session, timeout: int = 30) -> int:
         feed.website = parsed.feed["link"]
 
     new_count = 0
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for entry in parsed.entries:
         guid = entry.get("id") or entry.get("link")

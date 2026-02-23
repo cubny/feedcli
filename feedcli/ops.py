@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from feedcli.db import get_session
 from feedcli.discovery import discover_feeds as _discover_feeds
@@ -47,7 +47,7 @@ def add_feed(
             url=feed_url,
             title=title or discovered_title or feed_url,
             website=url if url != feed_url else None,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         sess.add(feed)
         sess.flush()
@@ -75,7 +75,7 @@ def list_feeds(
     """List all subscribed feeds. Optionally filter by tag."""
     sess, should_close = _get_session(session)
     try:
-        query = sess.query(Feed)
+        query = sess.query(Feed).options(selectinload(Feed.tags))
         if tag:
             from feedcli.models import Tag
 
@@ -163,7 +163,11 @@ def get_unread_items(
     """Get unread items, optionally filtered by feed. Ordered by published_at desc."""
     sess, should_close = _get_session(session)
     try:
-        query = sess.query(Item).filter(Item.is_read == False, Item.deleted == False)  # noqa: E712
+        query = (
+            sess.query(Item)
+            .options(joinedload(Item.feed))
+            .filter(Item.is_read == False, Item.deleted == False)  # noqa: E712
+        )
         if feed_id is not None:
             query = query.filter(Item.feed_id == feed_id)
         return query.order_by(Item.published_at.desc().nullslast()).limit(limit).all()
@@ -182,7 +186,9 @@ def get_items(
     """Get items with flexible filtering."""
     sess, should_close = _get_session(session)
     try:
-        query = sess.query(Item).filter(Item.deleted == False)  # noqa: E712
+        query = (
+            sess.query(Item).options(joinedload(Item.feed)).filter(Item.deleted == False)  # noqa: E712
+        )
         if feed_id is not None:
             query = query.filter(Item.feed_id == feed_id)
         if unread_only:
@@ -202,7 +208,7 @@ def get_item(item_id: int, session: Session | None = None) -> Item:
     """Get a single item by ID."""
     sess, should_close = _get_session(session)
     try:
-        item = sess.query(Item).filter(Item.id == item_id).first()
+        item = sess.query(Item).options(joinedload(Item.feed)).filter(Item.id == item_id).first()
         if not item:
             raise ValueError(f"Item not found: {item_id}")
         return item

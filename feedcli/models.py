@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -35,7 +35,7 @@ class Feed(Base):
     last_error = Column(String, nullable=True)
     error_count = Column(Integer, default=0)
     disabled = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     items = relationship("Item", back_populates="feed", cascade="all, delete-orphan")
     tags = relationship("Tag", back_populates="feed", cascade="all, delete-orphan")

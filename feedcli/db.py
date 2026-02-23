@@ -32,7 +32,7 @@ def get_session(db_path: str | None = None) -> Session:
     global _SessionFactory
     engine = get_engine(db_path)
     if _SessionFactory is None or db_path is not None:
-        _SessionFactory = sessionmaker(bind=engine)
+        _SessionFactory = sessionmaker(bind=engine, expire_on_commit=False)
     return _SessionFactory()
 
 

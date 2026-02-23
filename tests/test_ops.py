@@ -1,6 +1,6 @@
 """Tests for feedcli.ops — high-level operations API."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +22,7 @@ from feedcli.ops import (
 @pytest.fixture
 def feed_in_db(db_session):
     """Insert a feed directly into the test DB."""
-    feed = Feed(url="https://example.com/feed.xml", title="Test Feed", created_at=datetime.utcnow())
+    feed = Feed(url="https://example.com/feed.xml", title="Test Feed", created_at=datetime.now(timezone.utc))
     db_session.add(feed)
     db_session.commit()
     return feed
@@ -40,7 +40,7 @@ def items_in_db(db_session, feed_in_db):
             url=f"https://example.com/item-{i}",
             summary=f"Summary {i}",
             published_at=datetime(2024, 1, i + 1),
-            fetched_at=datetime.utcnow(),
+            fetched_at=datetime.now(timezone.utc),
             is_read=False,
         )
         db_session.add(item)
