@@ -4,14 +4,14 @@ A local Python library and CLI for RSS/Atom/JSON-Feed management.
 
 ## Overview
 
-`feedcli` provides programmatic CRUD operations on feeds and items, backed by a local SQLite database. It is built to be a high-performance, deterministic component for content curation workflows.
+`feedcli` provides programmatic CRUD operations on feeds and items, backed by a local SQLite database. It is built to be a high-performance, deterministic component for content curation workflows, with JSON-first output optimized for AI agents and automation.
 
 ### Key Features
 
 - **Library-First Design**: The core logic resides in `feedcli.ops`, making it easy to embed into other Python applications.
 - **Auto-Discovery**: Automatically finds feed URLs from website links.
 - **Conditional Fetching**: Uses ETag and Last-Modified headers to minimize bandwidth.
-- **CLI Interface**: A thin Click-based wrapper for manual management and scripting.
+- **CLI Interface**: A thin Click-based wrapper for manual management and scripting, optimized for machine readability.
 - **Local Storage**: XDG-compliant SQLite storage.
 
 ## Installation
