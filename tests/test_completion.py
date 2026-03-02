@@ -1,6 +1,7 @@
-import pytest
 from click.testing import CliRunner
+
 from feedcli.cli import main
+
 
 def test_completion_bash():
     runner = CliRunner()

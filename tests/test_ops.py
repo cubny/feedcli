@@ -1,5 +1,6 @@
 """Tests for feedcli.ops — high-level operations API."""
 
+import signal
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -12,7 +13,6 @@ from feedcli.ops import (
     delete_feed,
     delete_item,
     export_opml,
-    get_feed,
     get_feeds_by_tag,
     get_item,
     get_item_url,
@@ -403,7 +403,7 @@ class TestImportExportOpml:
     def test_import_opml_skips_duplicates(self, mock_discover, db_session, tmp_path):
         """Duplicate feeds are silently skipped, not raised."""
         mock_discover.return_value = []
-        feed = add_feed(
+        add_feed(
             "https://example.com/feed.xml",
             title="Test Feed",
             auto_discover=False,
@@ -481,9 +481,183 @@ class TestSaveConfig:
         assert "test.db" in content
 
     def test_write_toml_raises_on_deep_nesting(self, tmp_path):
+
         from feedcli.config import _write_toml
-        from pathlib import Path
 
         path = tmp_path / "config.toml"
         with pytest.raises(ValueError, match="nested too deeply"):
             _write_toml({"a": {"b": {"c": "deep"}}}, path)
+
+    def test_toml_value_escapes_backslash_and_quote(self):
+        from feedcli.config import _toml_value
+
+        assert _toml_value("C:\\Users\\foo") == '"C:\\\\Users\\\\foo"'
+        assert _toml_value('say "hello"') == '"say \\"hello\\""'
+
+    def test_save_config_stores_int_for_numeric_keys(self, tmp_path, monkeypatch):
+        from feedcli.config import save_config
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        save_config("fetch.timeout", "42")
+
+        from feedcli.config import get_config_path
+
+        content = get_config_path().read_text()
+        # Should be bare integer, not quoted string
+        assert "timeout = 42" in content
+        assert 'timeout = "42"' not in content
+
+
+class TestDbOps:
+    def test_db_backup_missing_source_raises(self, tmp_path, monkeypatch):
+        from feedcli.ops import db_backup
+
+        monkeypatch.setenv("FEEDCLI_DB_PATH", str(tmp_path / "nonexistent.db"))
+        with pytest.raises(ValueError, match="Database file not found"):
+            db_backup(str(tmp_path / "out.db"))
+
+    def test_db_backup_in_memory_raises(self, monkeypatch):
+        from feedcli.ops import db_backup
+
+        monkeypatch.setenv("FEEDCLI_DB_PATH", ":memory:")
+        with pytest.raises(ValueError, match="in-memory"):
+            db_backup("/tmp/out.db")
+
+    def test_db_restore_missing_source_raises(self, tmp_path, monkeypatch):
+        from feedcli.ops import db_restore
+
+        monkeypatch.setenv("FEEDCLI_DB_PATH", str(tmp_path / "feedcli.db"))
+        with pytest.raises(ValueError, match="Backup file not found"):
+            db_restore(str(tmp_path / "nonexistent.db"))
+
+    def test_db_restore_in_memory_raises(self, tmp_path, monkeypatch):
+        from feedcli.ops import db_restore
+
+        monkeypatch.setenv("FEEDCLI_DB_PATH", ":memory:")
+        src = tmp_path / "backup.db"
+        src.write_bytes(b"")
+        with pytest.raises(ValueError, match="in-memory"):
+            db_restore(str(src))
+
+    def test_db_backup_restore_roundtrip(self, tmp_path, monkeypatch):
+        from feedcli.db import reset_engine
+        from feedcli.ops import db_backup, db_restore
+
+        db_path = tmp_path / "feedcli.db"
+        backup_path = tmp_path / "backup.db"
+        monkeypatch.setenv("FEEDCLI_DB_PATH", str(db_path))
+        reset_engine()
+
+        # Create the DB by listing feeds
+        list_feeds(session=None)
+
+        db_backup(str(backup_path))
+        assert backup_path.exists()
+        db_restore(str(backup_path))
+        # Engine is reset; verify DB is still valid
+        assert list_feeds(session=None) == []
+
+    def test_db_restore_creates_dest_dir(self, tmp_path, monkeypatch):
+        from feedcli.db import reset_engine
+        from feedcli.ops import db_restore
+
+        src = tmp_path / "backup.db"
+        src.write_bytes(b"SQLite format 3\x00")
+        nested_dest = tmp_path / "a" / "b" / "feedcli.db"
+        monkeypatch.setenv("FEEDCLI_DB_PATH", str(nested_dest))
+        reset_engine()
+        # Should not raise FileNotFoundError for missing parent dirs
+        db_restore(str(src))
+        assert nested_dest.exists()
+
+
+class TestDaemon:
+    def test_status_not_running_no_pidfile(self, tmp_path, monkeypatch):
+        from feedcli.daemon import status
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        result = status()
+        assert result == {"running": False}
+
+    def test_status_stale_pidfile(self, tmp_path, monkeypatch):
+        from feedcli.daemon import status
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        pid_file = tmp_path / "feedcli" / "daemon.pid"
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        # Write a PID that definitely doesn't exist
+        pid_file.write_text("999999")
+        result = status()
+        assert result["running"] is False
+        assert not pid_file.exists()
+
+    def test_status_corrupt_pidfile(self, tmp_path, monkeypatch):
+        from feedcli.daemon import status
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        pid_file = tmp_path / "feedcli" / "daemon.pid"
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text("not-a-number")
+        result = status()
+        assert result["running"] is False
+        assert not pid_file.exists()
+
+    def test_stop_not_running_raises(self, tmp_path, monkeypatch):
+        from feedcli.daemon import stop
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        with pytest.raises(RuntimeError, match="not running"):
+            stop()
+
+    def test_stop_corrupt_pidfile_raises(self, tmp_path, monkeypatch):
+        from feedcli.daemon import stop
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        pid_file = tmp_path / "feedcli" / "daemon.pid"
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text("not-a-number")
+        with pytest.raises(RuntimeError, match="corrupt"):
+            stop()
+
+    def test_stop_sends_sigterm(self, tmp_path, monkeypatch):
+        from unittest.mock import patch
+
+        from feedcli.daemon import stop
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        pid_file = tmp_path / "feedcli" / "daemon.pid"
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text("12345")
+        with patch("feedcli.daemon.os.kill") as mock_kill:
+            stop()
+        mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+
+    def test_stop_permission_error_raises(self, tmp_path, monkeypatch):
+        from unittest.mock import patch
+
+        from feedcli.daemon import stop
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        pid_file = tmp_path / "feedcli" / "daemon.pid"
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text("12345")
+        with patch("feedcli.daemon.os.kill", side_effect=PermissionError):
+            with pytest.raises(RuntimeError, match="permission denied"):
+                stop()
+
+    def test_logs_no_logfile(self, tmp_path, monkeypatch):
+        from feedcli.daemon import logs
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        assert logs() == "No log file found."
+
+    def test_logs_returns_last_n_lines(self, tmp_path, monkeypatch):
+        from feedcli.daemon import logs
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        log_file = tmp_path / "feedcli" / "daemon.log"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_file.write_text("\n".join(f"line {i}" for i in range(100)))
+        result = logs(lines=10)
+        assert "line 99" in result
+        assert "line 0" not in result

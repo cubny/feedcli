@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from feedcli.db import get_session
@@ -641,13 +640,14 @@ def db_vacuum() -> None:
     from feedcli.db import get_engine
 
     engine = get_engine()
-    with engine.connect() as conn:
-        conn.execute(sa_text("VACUUM"))
-        conn.commit()
+    # VACUUM must run outside a transaction; AUTOCOMMIT ensures that.
+    with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as conn:
+        conn.exec_driver_sql("VACUUM")
 
 
 def db_backup(dest_path: str) -> None:
     """Backup the database to a file."""
+    import os
     import shutil
 
     from feedcli.config import load_config
@@ -656,6 +656,11 @@ def db_backup(dest_path: str) -> None:
     src = config["db_path"]
     if src == ":memory:":
         raise ValueError("Cannot backup an in-memory database")
+    if not os.path.exists(src):
+        raise ValueError(
+            f"Database file not found: {src}. "
+            "Try running a command first to create the DB."
+        )
     shutil.copy2(src, dest_path)
 
 
@@ -674,5 +679,8 @@ def db_restore(src_path: str) -> None:
     dest = config["db_path"]
     if dest == ":memory:":
         raise ValueError("Cannot restore to an in-memory database")
+    # Ensure the destination directory exists (e.g. on a fresh XDG setup).
+    from pathlib import Path
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src_path, dest)
     reset_engine()

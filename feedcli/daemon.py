@@ -36,14 +36,22 @@ def start(interval: int = 60) -> None:
     pid_path.parent.mkdir(parents=True, exist_ok=True)
 
     if pid_path.exists():
-        pid = int(pid_path.read_text().strip())
         try:
-            os.kill(pid, 0)
-            raise RuntimeError(
-                f"Daemon already running (PID {pid})"
-            )
-        except ProcessLookupError:
-            pid_path.unlink()
+            pid = int(pid_path.read_text().strip())
+        except ValueError:
+            # Corrupt PID file — clean it up and continue.
+            pid_path.unlink(missing_ok=True)
+        else:
+            try:
+                os.kill(pid, 0)
+                raise RuntimeError(f"Daemon already running (PID {pid})")
+            except ProcessLookupError:
+                pid_path.unlink(missing_ok=True)
+            except PermissionError:
+                raise RuntimeError(
+                    f"Daemon appears to be running (PID {pid}) but process is "
+                    "owned by another user."
+                )
 
     # Write PID
     pid_path.write_text(str(os.getpid()))
@@ -91,11 +99,21 @@ def stop() -> None:
     if not pid_path.exists():
         raise RuntimeError("Daemon is not running")
 
-    pid = int(pid_path.read_text().strip())
+    try:
+        pid = int(pid_path.read_text().strip())
+    except ValueError:
+        pid_path.unlink(missing_ok=True)
+        raise RuntimeError("Daemon PID file is corrupt; removed it. Daemon may not be running.")
+
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
-        pass
+        pass  # Process already gone
+    except PermissionError:
+        raise RuntimeError(
+            f"Cannot stop daemon (PID {pid}): permission denied. "
+            "Is it owned by a different user?"
+        )
     pid_path.unlink(missing_ok=True)
 
 
@@ -105,13 +123,21 @@ def status() -> dict:
     if not pid_path.exists():
         return {"running": False}
 
-    pid = int(pid_path.read_text().strip())
+    try:
+        pid = int(pid_path.read_text().strip())
+    except ValueError:
+        pid_path.unlink(missing_ok=True)
+        return {"running": False, "note": "stale/corrupt pidfile removed"}
+
     try:
         os.kill(pid, 0)
         return {"running": True, "pid": pid}
     except ProcessLookupError:
         pid_path.unlink(missing_ok=True)
         return {"running": False}
+    except PermissionError:
+        # Process exists but is owned by another user — treat as running.
+        return {"running": True, "pid": pid}
 
 
 def logs(lines: int = 50) -> str:

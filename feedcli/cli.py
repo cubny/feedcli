@@ -246,14 +246,16 @@ def items():
 @click.pass_context
 def items_list(ctx, feed_id, unread, starred, limit, fmt):
     """List feed items."""
-    from feedcli.ops import get_items, get_unread_items
+    from feedcli.ops import get_items
 
-    if unread:
-        result = get_unread_items(feed_id=feed_id, limit=limit, session=ctx.obj["session"])
-    else:
-        result = get_items(
-            feed_id=feed_id, starred_only=starred, limit=limit, session=ctx.obj["session"]
-        )
+    # Route everything through get_items() so --unread and --starred can combine.
+    result = get_items(
+        feed_id=feed_id,
+        unread_only=unread,
+        starred_only=starred,
+        limit=limit,
+        session=ctx.obj["session"],
+    )
     data = [_format_item(i) for i in result]
     _output(data, fmt)
 
@@ -607,12 +609,32 @@ def db_restore_cmd(ctx, src_path, force):
 
     if not force:
         click.confirm("Restore database from backup? This will overwrite current data.", abort=True)
+
+    # Close the existing session and dispose the engine before overwriting the
+    # SQLite file to avoid lock conflicts or stale connections after restore.
+    session = ctx.obj.get("session")
+    if session is not None:
+        try:
+            engine = session.get_bind()
+        except Exception:
+            engine = getattr(session, "bind", None)
+        session.close()
+        if engine is not None:
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+
     try:
         db_restore(src_path)
         click.echo(json.dumps({"status": "ok", "restored_from": src_path}))
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+    finally:
+        # Recreate a fresh session bound to the restored DB.
+        from feedcli.db import get_session as _get_session
+        ctx.obj["session"] = _get_session()
 
 
 # --- Daemon CLI ---

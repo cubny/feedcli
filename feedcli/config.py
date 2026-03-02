@@ -85,12 +85,14 @@ def save_config(key: str, value: str) -> None:
             with open(config_path, "rb") as f:
                 data = tomllib.load(f)
 
-    # Set the key (support dotted notation)
+    # Set the key (support dotted notation), coercing to correct type.
+    _INT_KEYS = {"fetch.timeout", "fetch.jobs"}
     parts = key.split(".")
     target = data
     for part in parts[:-1]:
         target = target.setdefault(part, {})
-    target[parts[-1]] = value
+    # Store numerics as int so _write_toml produces bare integers, not strings.
+    target[parts[-1]] = int(value) if key in _INT_KEYS else value
 
     # Write back as TOML (simple writer, no external dep)
     _write_toml(data, config_path)
@@ -132,4 +134,6 @@ def _toml_value(v) -> str:
         return str(v)
     if isinstance(v, float):
         return str(v)
-    return f'"{v}"'
+    # Escape backslashes and double-quotes for a valid TOML basic string.
+    escaped = str(v).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
