@@ -60,3 +60,76 @@ def load_config() -> dict:
         config["fetch_jobs"] = int(env_jobs)
 
     return config
+
+
+def save_config(key: str, value: str) -> None:
+    """Set a config value and write it to disk.
+
+    Supports dotted keys like 'database.path', 'fetch.timeout'.
+    """
+    config_path = get_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing TOML data
+    data: dict = {}
+    if config_path.exists():
+        try:
+            import tomllib
+        except ImportError:
+            try:
+                import tomli as tomllib  # type: ignore[no-redef]
+            except ImportError:
+                tomllib = None  # type: ignore[assignment]
+
+        if tomllib is not None:
+            with open(config_path, "rb") as f:
+                data = tomllib.load(f)
+
+    # Set the key (support dotted notation)
+    parts = key.split(".")
+    target = data
+    for part in parts[:-1]:
+        target = target.setdefault(part, {})
+    target[parts[-1]] = value
+
+    # Write back as TOML (simple writer, no external dep)
+    _write_toml(data, config_path)
+
+
+def _write_toml(data: dict, path: Path) -> None:
+    """Write a simple nested dict as TOML (max 1 level of nesting).
+
+    Raises ValueError if values nested deeper than [section] are found.
+    """
+    for k, v in data.items():
+        if isinstance(v, dict):
+            for sk, sv in v.items():
+                if isinstance(sv, dict):
+                    raise ValueError(
+                        f"Config key '{k}.{sk}' is nested too deeply. "
+                        "Only one level of TOML sections is supported."
+                    )
+    lines: list[str] = []
+    # Top-level scalars first
+    for k, v in data.items():
+        if not isinstance(v, dict):
+            lines.append(f"{k} = {_toml_value(v)}")
+    # Then sections
+    for k, v in data.items():
+        if isinstance(v, dict):
+            lines.append(f"\n[{k}]")
+            for sk, sv in v.items():
+                lines.append(f"{sk} = {_toml_value(sv)}")
+    lines.append("")
+    path.write_text("\n".join(lines))
+
+
+def _toml_value(v) -> str:
+    """Format a Python value as a TOML value."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return str(v)
+    return f'"{v}"'
