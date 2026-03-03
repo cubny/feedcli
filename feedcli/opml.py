@@ -52,24 +52,22 @@ def generate_opml(feeds: list, file_path: str) -> None:
     opml = ET.Element("opml", version="2.0")
     head = ET.SubElement(opml, "head")
     ET.SubElement(head, "title").text = "feedcli subscriptions"
-    ET.SubElement(head, "dateCreated").text = datetime.now(
-        timezone.utc
-    ).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    ET.SubElement(head, "dateCreated").text = datetime.now(timezone.utc).strftime(
+        "%a, %d %b %Y %H:%M:%S +0000"
+    )
 
     body = ET.SubElement(opml, "body")
 
-    # Group feeds by first tag (if any) into category folders
+    # Group feeds by category into folders
     categorized: dict[str | None, list] = {}
     for feed in feeds:
-        tags = getattr(feed, "tags", [])
-        cat = tags[0].name if tags else None
-        categorized.setdefault(cat, []).append(feed)
+        cat = getattr(feed, "category", None)
+        cat_name = cat.name if cat and cat.name != "default" else None
+        categorized.setdefault(cat_name, []).append(feed)
 
     for cat, cat_feeds in categorized.items():
         if cat:
-            folder = ET.SubElement(
-                body, "outline", text=cat, title=cat
-            )
+            folder = ET.SubElement(body, "outline", text=cat, title=cat)
             parent = folder
         else:
             parent = body

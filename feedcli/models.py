@@ -36,9 +36,10 @@ class Feed(Base):
     error_count = Column(Integer, default=0)
     disabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, default=1)
 
+    category = relationship("Category", back_populates="feeds")
     items = relationship("Item", back_populates="feed", cascade="all, delete-orphan")
-    tags = relationship("Tag", back_populates="feed", cascade="all, delete-orphan")
 
 
 class Item(Base):
@@ -63,17 +64,27 @@ class Item(Base):
     deleted = Column(Boolean, default=False)
 
     feed = relationship("Feed", back_populates="items")
+    tags = relationship("ItemTag", back_populates="item", cascade="all, delete-orphan")
 
 
-class Tag(Base):
-    __tablename__ = "tags"
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+
+    feeds = relationship("Feed", back_populates="category")
+
+
+class ItemTag(Base):
+    __tablename__ = "item_tags"
     __table_args__ = (
-        UniqueConstraint("feed_id", "name", name="uq_tag_feed_name"),
-        Index("ix_tags_name", "name"),
+        UniqueConstraint("item_id", "name", name="uq_item_tag"),
+        Index("ix_item_tags_name", "name"),
     )
 
     id = Column(Integer, primary_key=True)
-    feed_id = Column(Integer, ForeignKey("feeds.id"), index=True)
+    item_id = Column(Integer, ForeignKey("items.id"), index=True)
     name = Column(String, nullable=False)
 
-    feed = relationship("Feed", back_populates="tags")
+    item = relationship("Item", back_populates="tags")

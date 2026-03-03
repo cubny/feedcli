@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -31,13 +32,15 @@ def _get_session(session: Session | None) -> tuple[Session, bool]:
 def add_feed(
     url: str,
     title: str | None = None,
-    tags: list[str] | None = None,
+    category: str | None = None,
     auto_discover: bool = True,
     session: Session | None = None,
 ) -> Feed:
     """Subscribe to a feed. Auto-discovers feed URL from website URL by default."""
     sess, should_close = _get_session(session)
     try:
+        from feedcli.models import Category
+
         feed_url = url
         discovered_title = None
 
@@ -52,20 +55,21 @@ def add_feed(
         if existing:
             raise FeedAlreadyExistsError(existing.url, existing.id)
 
+        cat_name = category or "default"
+        cat = sess.query(Category).filter(Category.name == cat_name).first()
+        if not cat:
+            cat = Category(name=cat_name)
+            sess.add(cat)
+            sess.flush()
+
         feed = Feed(
             url=feed_url,
             title=title or discovered_title or feed_url,
             website=url if url != feed_url else None,
+            category_id=cat.id,
             created_at=datetime.now(timezone.utc),
         )
         sess.add(feed)
-        sess.flush()
-
-        if tags:
-            from feedcli.models import Tag
-
-            for tag_name in tags:
-                sess.add(Tag(feed_id=feed.id, name=tag_name))
 
         sess.commit()
         return feed
@@ -78,17 +82,17 @@ def add_feed(
 
 
 def list_feeds(
-    tag: str | None = None,
+    category: str | None = None,
     session: Session | None = None,
 ) -> list[Feed]:
-    """List all subscribed feeds. Optionally filter by tag."""
+    """List all subscribed feeds. Optionally filter by category."""
     sess, should_close = _get_session(session)
     try:
-        query = sess.query(Feed).options(selectinload(Feed.tags))
-        if tag:
-            from feedcli.models import Tag
+        query = sess.query(Feed).options(joinedload(Feed.category))
+        if category:
+            from feedcli.models import Category
 
-            query = query.join(Feed.tags).filter(Tag.name == tag)
+            query = query.join(Feed.category).filter(Category.name == category)
         return query.order_by(Feed.id).all()
     finally:
         if should_close:
@@ -164,9 +168,7 @@ def update_all_feeds(
             sess.close()
 
 
-def reset_feed_errors(
-    feed_id: int, session: Session | None = None
-) -> int:
+def reset_feed_errors(feed_id: int, session: Session | None = None) -> int:
     """Reset error state for a feed and immediately fetch it.
 
     Clears error_count, disabled, and last_error, then calls update_feed.
@@ -200,19 +202,24 @@ def reset_feed_errors(
 
 def get_unread_items(
     feed_id: int | None = None,
+    tag: str | None = None,
     limit: int = 50,
     session: Session | None = None,
 ) -> list[Item]:
-    """Get unread items, optionally filtered by feed. Ordered by published_at desc."""
+    """Get unread items, optionally filtered by feed or tag. Ordered by published_at desc."""
     sess, should_close = _get_session(session)
     try:
         query = (
             sess.query(Item)
-            .options(joinedload(Item.feed))
+            .options(joinedload(Item.feed), selectinload(Item.tags))
             .filter(Item.is_read == False, Item.deleted == False)  # noqa: E712
         )
         if feed_id is not None:
             query = query.filter(Item.feed_id == feed_id)
+        if tag is not None:
+            from feedcli.models import ItemTag
+
+            query = query.join(Item.tags).filter(ItemTag.name == tag)
         return query.order_by(Item.published_at.desc().nullslast()).limit(limit).all()
     finally:
         if should_close:
@@ -221,6 +228,7 @@ def get_unread_items(
 
 def get_items(
     feed_id: int | None = None,
+    tag: str | None = None,
     unread_only: bool = False,
     starred_only: bool = False,
     limit: int = 50,
@@ -231,19 +239,22 @@ def get_items(
     sess, should_close = _get_session(session)
     try:
         query = (
-            sess.query(Item).options(joinedload(Item.feed)).filter(Item.deleted == False)  # noqa: E712
+            sess.query(Item)
+            .options(joinedload(Item.feed), selectinload(Item.tags))
+            .filter(Item.deleted == False)  # noqa: E712
         )
         if feed_id is not None:
             query = query.filter(Item.feed_id == feed_id)
+        if tag is not None:
+            from feedcli.models import ItemTag
+
+            query = query.join(Item.tags).filter(ItemTag.name == tag)
         if unread_only:
             query = query.filter(Item.is_read == False)  # noqa: E712
         if starred_only:
             query = query.filter(Item.is_starred == True)  # noqa: E712
         return (
-            query.order_by(Item.published_at.desc().nullslast())
-            .offset(offset)
-            .limit(limit)
-            .all()
+            query.order_by(Item.published_at.desc().nullslast()).offset(offset).limit(limit).all()
         )
     finally:
         if should_close:
@@ -341,6 +352,7 @@ def delete_item(item_id: int, hard: bool = False, session: Session | None = None
 def search_items(
     query: str,
     feed_id: int | None = None,
+    tag: str | None = None,
     limit: int = 20,
     session: Session | None = None,
 ) -> list[Item]:
@@ -352,7 +364,7 @@ def search_items(
         pattern = f"%{escaped}%"
         q = (
             sess.query(Item)
-            .options(joinedload(Item.feed))
+            .options(joinedload(Item.feed), selectinload(Item.tags))
             .filter(
                 Item.deleted == False,  # noqa: E712
                 (Item.title.ilike(pattern, escape="!"))
@@ -362,6 +374,10 @@ def search_items(
         )
         if feed_id is not None:
             q = q.filter(Item.feed_id == feed_id)
+        if tag is not None:
+            from feedcli.models import ItemTag
+
+            q = q.join(Item.tags).filter(ItemTag.name == tag)
         return q.order_by(Item.published_at.desc().nullslast()).limit(limit).all()
     finally:
         if should_close:
@@ -431,41 +447,32 @@ def get_item_url(item_id: int, session: Session | None = None) -> str:
     return item.url
 
 
-# --- Tag operations ---
+# --- Category operations ---
 
 
-def list_tags(session: Session | None = None) -> list[str]:
-    """List all tags in use."""
+def list_categories(session: Session | None = None) -> list[str]:
+    """List all categories in use."""
     sess, should_close = _get_session(session)
     try:
-        from feedcli.models import Tag
+        from feedcli.models import Category
 
-        rows = sess.query(Tag.name).distinct().order_by(Tag.name).all()
+        rows = sess.query(Category.name).distinct().order_by(Category.name).all()
         return [row[0] for row in rows]
     finally:
         if should_close:
             sess.close()
 
 
-def add_tag(
-    feed_id: int, tag: str, session: Session | None = None
-) -> None:
-    """Add a tag to a feed."""
+def create_category(name: str, session: Session | None = None) -> None:
+    """Create a new category."""
     sess, should_close = _get_session(session)
     try:
-        from feedcli.models import Tag
+        from feedcli.models import Category
 
-        feed = sess.query(Feed).filter(Feed.id == feed_id).first()
-        if not feed:
-            raise ValueError(f"Feed not found: {feed_id}")
-        existing = (
-            sess.query(Tag)
-            .filter(Tag.feed_id == feed_id, Tag.name == tag)
-            .first()
-        )
+        existing = sess.query(Category).filter(Category.name == name).first()
         if existing:
-            return  # Already tagged
-        sess.add(Tag(feed_id=feed_id, name=tag))
+            return
+        sess.add(Category(name=name))
         sess.commit()
     except Exception:
         sess.rollback()
@@ -475,23 +482,138 @@ def add_tag(
             sess.close()
 
 
-def remove_tag(
-    feed_id: int, tag: str, session: Session | None = None
-) -> None:
-    """Remove a tag from a feed."""
+def delete_category(name: str, move_to: str = "default", session: Session | None = None) -> None:
+    """Delete a category and move its feeds to another category."""
+    if name == "default":
+        raise ValueError("Cannot delete the default category")
     sess, should_close = _get_session(session)
     try:
-        from feedcli.models import Tag
+        from feedcli.models import Category, Feed
 
-        t = (
-            sess.query(Tag)
-            .filter(Tag.feed_id == feed_id, Tag.name == tag)
-            .first()
+        cat = sess.query(Category).filter(Category.name == name).first()
+        if not cat:
+            raise ValueError(f"Category not found: {name}")
+
+        target_cat = sess.query(Category).filter(Category.name == move_to).first()
+        if not target_cat:
+            target_cat = Category(name=move_to)
+            sess.add(target_cat)
+            sess.flush()
+
+        sess.query(Feed).filter(Feed.category_id == cat.id).update(
+            {Feed.category_id: target_cat.id}
         )
+        sess.delete(cat)
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        if should_close:
+            sess.close()
+
+
+def rename_category(old_name: str, new_name: str, session: Session | None = None) -> None:
+    """Rename a category."""
+    if old_name == "default":
+        raise ValueError("Cannot rename the default category")
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import Category
+
+        cat = sess.query(Category).filter(Category.name == old_name).first()
+        if not cat:
+            raise ValueError(f"Category not found: {old_name}")
+
+        existing_new = sess.query(Category).filter(Category.name == new_name).first()
+        if existing_new:
+            raise ValueError(f"Category already exists: {new_name}")
+
+        cat.name = new_name
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        if should_close:
+            sess.close()
+
+
+def set_feed_category(feed_id: int, name: str, session: Session | None = None) -> None:
+    """Set the category for a feed."""
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import Category, Feed
+
+        feed = sess.query(Feed).filter(Feed.id == feed_id).first()
+        if not feed:
+            raise ValueError(f"Feed not found: {feed_id}")
+
+        cat = sess.query(Category).filter(Category.name == name).first()
+        if not cat:
+            cat = Category(name=name)
+            sess.add(cat)
+            sess.flush()
+
+        feed.category_id = cat.id
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        if should_close:
+            sess.close()
+
+
+def reset_feed_category(feed_id: int, session: Session | None = None) -> None:
+    """Reset a feed's category to 'default'."""
+    set_feed_category(feed_id, "default", session=session)
+
+
+def get_feeds_by_category(name: str, session: Session | None = None) -> list[Feed]:
+    """Get all feeds with a given category."""
+    return list_feeds(category=name, session=session)
+
+
+# --- Item Tag operations ---
+
+
+def tag_item(item_id: int, tag: str, session: Session | None = None) -> None:
+    """Add a tag to an item."""
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import Item, ItemTag
+
+        item = sess.query(Item).filter(Item.id == item_id).first()
+        if not item:
+            raise ValueError(f"Item not found: {item_id}")
+
+        existing = (
+            sess.query(ItemTag).filter(ItemTag.item_id == item_id, ItemTag.name == tag).first()
+        )
+        if existing:
+            return
+
+        sess.add(ItemTag(item_id=item_id, name=tag))
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        if should_close:
+            sess.close()
+
+
+def untag_item(item_id: int, tag: str, session: Session | None = None) -> None:
+    """Remove a tag from an item."""
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import ItemTag
+
+        t = sess.query(ItemTag).filter(ItemTag.item_id == item_id, ItemTag.name == tag).first()
         if not t:
-            raise ValueError(
-                f"Tag '{tag}' not found on feed {feed_id}"
-            )
+            raise ValueError(f"Tag '{tag}' not found on item {item_id}")
+
         sess.delete(t)
         sess.commit()
     except Exception:
@@ -502,11 +624,112 @@ def remove_tag(
             sess.close()
 
 
-def get_feeds_by_tag(
-    tag: str, session: Session | None = None
-) -> list[Feed]:
-    """Get all feeds with a given tag."""
-    return list_feeds(tag=tag, session=session)
+def list_item_tags(item_id: int | None = None, session: Session | None = None) -> list[str]:
+    """List distinct tags, optionally filtered by item."""
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import ItemTag
+
+        query = sess.query(ItemTag.name).distinct()
+        if item_id is not None:
+            query = query.filter(ItemTag.item_id == item_id)
+
+        rows = query.order_by(ItemTag.name).all()
+        return [row[0] for row in rows]
+    finally:
+        if should_close:
+            sess.close()
+
+
+def get_items_by_tag(tag: str, limit: int = 50, session: Session | None = None) -> list[Item]:
+    """Get items with a given tag."""
+    return get_items(tag=tag, limit=limit, session=session)
+
+
+def delete_tag(tag: str, delete_items: bool = False, session: Session | None = None) -> None:
+    """Delete a tag from all items. Optionally delete the associated items."""
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import Item, ItemTag
+
+        if delete_items:
+            item_ids = [
+                row[0] for row in sess.query(ItemTag.item_id).filter(ItemTag.name == tag).all()
+            ]
+            if item_ids:
+                sess.query(Item).filter(Item.id.in_(item_ids)).update(
+                    {Item.deleted: True}, synchronize_session=False
+                )
+
+        sess.query(ItemTag).filter(ItemTag.name == tag).delete(synchronize_session=False)
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        if should_close:
+            sess.close()
+
+
+def rename_tag(old_name: str, new_name: str, session: Session | None = None) -> None:
+    """Rename a tag across all items."""
+    sess, should_close = _get_session(session)
+    try:
+        from feedcli.models import ItemTag
+
+        # To avoid unique constraint violations, only update tags where the item doesn't
+        # already have the new tag. Then delete the remaining old tags.
+        items_with_new = [
+            row[0] for row in sess.query(ItemTag.item_id).filter(ItemTag.name == new_name).all()
+        ]
+
+        sess.query(ItemTag).filter(
+            ItemTag.name == old_name, ~ItemTag.item_id.in_(items_with_new)
+        ).update({ItemTag.name: new_name}, synchronize_session=False)
+        sess.query(ItemTag).filter(ItemTag.name == old_name).delete(synchronize_session=False)
+
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        if should_close:
+            sess.close()
+
+
+# --- Deprecated Tag operations aliases ---
+
+
+def list_tags(session: Session | None = None) -> list[str]:
+    warnings.warn(
+        "'list_tags' is deprecated, use 'list_categories' instead", DeprecationWarning, stacklevel=2
+    )
+    return list_categories(session=session)
+
+
+def add_tag(feed_id: int, tag: str, session: Session | None = None) -> None:
+    warnings.warn(
+        "'add_tag' is deprecated, use 'set_feed_category' instead", DeprecationWarning, stacklevel=2
+    )
+    set_feed_category(feed_id, tag, session=session)
+
+
+def remove_tag(feed_id: int, tag: str, session: Session | None = None) -> None:
+    warnings.warn(
+        "'remove_tag' is deprecated, use 'reset_feed_category' instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    reset_feed_category(feed_id, session=session)
+
+
+def get_feeds_by_tag(tag: str, session: Session | None = None) -> list[Feed]:
+    warnings.warn(
+        "'get_feeds_by_tag' is deprecated, use 'get_feeds_by_category' instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return get_feeds_by_category(tag, session=session)
 
 
 # --- Feed discovery (public wrapper) ---
@@ -523,9 +746,7 @@ def discover_feeds(url: str, timeout: int = 30) -> list[dict]:
 # --- OPML operations ---
 
 
-def import_opml(
-    file_path: str, session: Session | None = None
-) -> list[Feed]:
+def import_opml(file_path: str, session: Session | None = None) -> list[Feed]:
     """Import feeds from an OPML file. Returns list of added feeds."""
     from feedcli.opml import parse_opml
 
@@ -536,12 +757,12 @@ def import_opml(
         if not url:
             continue
         title = outline.get("title") or outline.get("text")
-        tags = [outline["category"]] if outline.get("category") else None
+        category = outline.get("category")
         try:
             feed = add_feed(
                 url=url,
                 title=title,
-                tags=tags,
+                category=category,
                 auto_discover=False,
                 session=session,
             )
@@ -551,16 +772,12 @@ def import_opml(
         except ValueError as e:
             import logging
 
-            logging.getLogger(__name__).warning(
-                "Skipping %s: %s", url, e
-            )
+            logging.getLogger(__name__).warning("Skipping %s: %s", url, e)
             continue
     return feeds
 
 
-def export_opml(
-    file_path: str, session: Session | None = None
-) -> None:
+def export_opml(file_path: str, session: Session | None = None) -> None:
     """Export all feeds to an OPML file."""
     from feedcli.opml import generate_opml
 
@@ -658,8 +875,7 @@ def db_backup(dest_path: str) -> None:
         raise ValueError("Cannot backup an in-memory database")
     if not os.path.exists(src):
         raise ValueError(
-            f"Database file not found: {src}. "
-            "Try running a command first to create the DB."
+            f"Database file not found: {src}. Try running a command first to create the DB."
         )
     shutil.copy2(src, dest_path)
 
@@ -681,6 +897,7 @@ def db_restore(src_path: str) -> None:
         raise ValueError("Cannot restore to an in-memory database")
     # Ensure the destination directory exists (e.g. on a fresh XDG setup).
     from pathlib import Path
+
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src_path, dest)
     reset_engine()

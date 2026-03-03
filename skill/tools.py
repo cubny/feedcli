@@ -8,10 +8,12 @@ from feedcli.ops import (
     add_feed,
     delete_feed,
     get_items,
+    get_items_by_tag,
     get_unread_items,
     list_feeds,
     mark_all_read,
     mark_read,
+    tag_item,
     update_all_feeds,
 )
 
@@ -32,6 +34,9 @@ def feeds_get_unread(limit: int = 50) -> str:
             lines.append(f"  {item.summary[:300]}")
         if item.url:
             lines.append(f"  {item.url}")
+        if item.tags:
+            tags = ", ".join(t.name for t in item.tags)
+            lines.append(f"  Tags: {tags}")
         lines.append("")
     return "\n".join(lines)
 
@@ -55,13 +60,13 @@ def feeds_mark_all_read(feed_id: int | None = None) -> str:
     return f"Marked {count} items as read {scope}."
 
 
-def feeds_add(url: str, tag: str = "") -> str:
+def feeds_add(url: str, category: str = "") -> str:
     """Subscribe to a new RSS feed. Accepts website URL or direct feed URL.
     url: website or feed URL
-    tag: optional tag to categorize the feed
+    category: optional category for the feed (defaults to 'default')
     """
-    tags = [tag] if tag else None
-    feed = add_feed(url, tags=tags)
+    cat = category if category else None
+    feed = add_feed(url, category=cat)
     return f"Subscribed to: {feed.title} ({feed.url})"
 
 
@@ -73,14 +78,17 @@ def feeds_delete(feed_id: int) -> str:
     return f"Deleted feed {feed_id} and all its items."
 
 
-def feeds_list(tag: str = "") -> str:
-    """List all subscribed feeds. Optionally filter by tag.
-    tag: if provided, only show feeds with this tag
+def feeds_list(category: str = "") -> str:
+    """List all subscribed feeds. Optionally filter by category.
+    category: if provided, only show feeds in this category
     """
-    feeds = list_feeds(tag=tag or None)
+    feeds = list_feeds(category=category or None)
     if not feeds:
         return "No feeds subscribed."
-    lines = [f"[{f.id}] {f.title} — {f.url}" for f in feeds]
+    lines = [
+        f"[{f.id}] {f.title} — {f.url} (Category: {f.category.name if f.category else 'None'})"
+        for f in feeds
+    ]
     return "\n".join(lines)
 
 
@@ -91,9 +99,7 @@ def feeds_refresh() -> str:
     return f"Fetched {total} new items across {len(results)} feeds."
 
 
-def feeds_get_items(
-    feed_id: int | None = None, unread_only: bool = False, limit: int = 50
-) -> str:
+def feeds_get_items(feed_id: int | None = None, unread_only: bool = False, limit: int = 50) -> str:
     """Get items with flexible filtering.
     feed_id: filter to a specific feed
     unread_only: if True, only return unread items
@@ -109,4 +115,32 @@ def feeds_get_items(
         lines.append(f"[{item.id}] {feed_title} | {item.title}{status}")
         if item.url:
             lines.append(f"  {item.url}")
+        if item.tags:
+            tags = ", ".join(t.name for t in item.tags)
+            lines.append(f"  Tags: {tags}")
+    return "\n".join(lines)
+
+
+def items_tag(item_id: int, tag: str) -> str:
+    """Add a tag to a specific item.
+    item_id: the ID of the item
+    tag: the tag to add
+    """
+    tag_item(item_id, tag)
+    return f"Added tag '{tag}' to item {item_id}."
+
+
+def items_by_tag(tag: str, limit: int = 50) -> str:
+    """Get items that have a specific tag.
+    tag: the tag to filter by
+    limit: max number of items to return
+    """
+    items = get_items_by_tag(tag, limit=limit)
+    if not items:
+        return f"No items with tag '{tag}' found."
+    lines = []
+    for item in items:
+        feed_title = item.feed.title if item.feed else "Unknown"
+        status = "" if item.is_read else " [unread]"
+        lines.append(f"[{item.id}] {feed_title} | {item.title}{status} - {item.url}")
     return "\n".join(lines)

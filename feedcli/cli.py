@@ -11,11 +11,13 @@ from feedcli.db import get_session
 
 
 def _format_feed(feed) -> dict:
+    cat = getattr(feed, "category", None)
     return {
         "id": feed.id,
         "url": feed.url,
         "title": feed.title,
         "website": feed.website,
+        "category": cat.name if cat else "default",
         "last_fetched_at": feed.last_fetched_at.isoformat() if feed.last_fetched_at else None,
         "error_count": feed.error_count,
         "disabled": feed.disabled,
@@ -34,6 +36,7 @@ def _format_item(item) -> dict:
         "published_at": item.published_at.isoformat() if item.published_at else None,
         "is_read": item.is_read,
         "is_starred": item.is_starred,
+        "tags": [t.name for t in getattr(item, "tags", [])],
     }
 
 
@@ -51,6 +54,7 @@ def _format_item_detail(item) -> dict:
         "fetched_at": item.fetched_at.isoformat() if item.fetched_at else None,
         "is_read": item.is_read,
         "is_starred": item.is_starred,
+        "tags": [t.name for t in getattr(item, "tags", [])],
     }
 
 
@@ -103,14 +107,14 @@ def feeds():
 
 
 @feeds.command("list")
-@click.option("--tag", default=None, help="Filter by tag")
+@click.option("--category", default=None, help="Filter by category")
 @click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
 @click.pass_context
-def feeds_list(ctx, tag, fmt):
+def feeds_list(ctx, category, fmt):
     """List all subscribed feeds."""
     from feedcli.ops import list_feeds
 
-    result = list_feeds(tag=tag, session=ctx.obj["session"])
+    result = list_feeds(category=category, session=ctx.obj["session"])
     data = [_format_feed(f) for f in result]
     _output(data, fmt)
 
@@ -118,25 +122,20 @@ def feeds_list(ctx, tag, fmt):
 @feeds.command("add")
 @click.argument("url")
 @click.option("--title", "-t", default=None, help="Override feed title")
-@click.option(
-    "--tag",
-    multiple=True,
-    help="Tag to assign (can be repeated: --tag tech --tag ai)",
-)
+@click.option("--category", default="default", help="Category to assign (default: 'default')")
 @click.option("--no-discover", is_flag=True, help="Skip feed discovery, treat URL as direct feed")
 @click.option("--auto", is_flag=True, help="Auto-select first discovered feed")
 @click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
 @click.pass_context
-def feeds_add(ctx, url, title, tag, no_discover, auto, fmt):
+def feeds_add(ctx, url, title, category, no_discover, auto, fmt):
     """Subscribe to a feed."""
     from feedcli.ops import add_feed
 
-    tags = list(tag) if tag else None
     try:
         feed = add_feed(
             url=url,
             title=title,
-            tags=tags,
+            category=category,
             auto_discover=not no_discover,
             session=ctx.obj["session"],
         )
@@ -239,18 +238,20 @@ def items():
 
 @items.command("list")
 @click.option("--feed", "feed_id", type=int, default=None, help="Filter by feed ID")
+@click.option("--tag", default=None, help="Filter by tag")
 @click.option("--unread", is_flag=True, help="Show only unread items")
 @click.option("--starred", is_flag=True, help="Show only starred items")
 @click.option("--limit", type=int, default=50, help="Max items to return")
 @click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
 @click.pass_context
-def items_list(ctx, feed_id, unread, starred, limit, fmt):
+def items_list(ctx, feed_id, tag, unread, starred, limit, fmt):
     """List feed items."""
     from feedcli.ops import get_items
 
     # Route everything through get_items() so --unread and --starred can combine.
     result = get_items(
         feed_id=feed_id,
+        tag=tag,
         unread_only=unread,
         starred_only=starred,
         limit=limit,
@@ -337,14 +338,15 @@ def items_delete(ctx, item_id, hard):
 @items.command("search")
 @click.argument("query")
 @click.option("--feed", "feed_id", type=int, default=None, help="Filter by feed ID")
+@click.option("--tag", default=None, help="Filter by tag")
 @click.option("--limit", type=int, default=20, help="Max results")
 @click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
 @click.pass_context
-def items_search(ctx, query, feed_id, limit, fmt):
+def items_search(ctx, query, feed_id, tag, limit, fmt):
     """Search items by keyword."""
     from feedcli.ops import search_items
 
-    result = search_items(query, feed_id=feed_id, limit=limit, session=ctx.obj["session"])
+    result = search_items(query, feed_id=feed_id, tag=tag, limit=limit, session=ctx.obj["session"])
     data = [_format_item(i) for i in result]
     _output(data, fmt)
 
@@ -407,23 +409,105 @@ def items_get_url(ctx, item_id):
         sys.exit(1)
 
 
-# --- Tags CLI ---
+# --- Categories CLI ---
+
+
+@main.group()
+def categories():
+    """Manage feed categories."""
+
+
+@categories.command("list")
+@click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
+@click.pass_context
+def categories_list(ctx, fmt):
+    """List all categories in use."""
+    from feedcli.ops import list_categories
+
+    result = list_categories(session=ctx.obj["session"])
+    if fmt == "table":
+        _output([{"category": c} for c in result], fmt)
+    else:
+        _output(result, fmt)
+
+
+@categories.command("create")
+@click.argument("name")
+@click.pass_context
+def categories_create(ctx, name):
+    """Create a new category."""
+    from feedcli.ops import create_category
+
+    try:
+        create_category(name, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "ok", "category": name}))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@categories.command("delete")
+@click.argument("name")
+@click.option("--move-to", default="default", help="Category to move feeds to (default: default)")
+@click.pass_context
+def categories_delete(ctx, name, move_to):
+    """Delete a category and move its feeds."""
+    from feedcli.ops import delete_category
+
+    try:
+        delete_category(name, move_to=move_to, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "deleted", "category": name, "moved_to": move_to}))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@categories.command("rename")
+@click.argument("old_name")
+@click.argument("new_name")
+@click.pass_context
+def categories_rename(ctx, old_name, new_name):
+    """Rename a category."""
+    from feedcli.ops import rename_category
+
+    try:
+        rename_category(old_name, new_name, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "renamed", "old": old_name, "new": new_name}))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@categories.command("show")
+@click.argument("name")
+@click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
+@click.pass_context
+def categories_show(ctx, name, fmt):
+    """Show all feeds in a given category."""
+    from feedcli.ops import get_feeds_by_category
+
+    result = get_feeds_by_category(name, session=ctx.obj["session"])
+    data = [_format_feed(f) for f in result]
+    _output(data, fmt)
+
+
+# --- Item Tags CLI ---
 
 
 @main.group()
 def tags():
-    """Manage feed tags."""
+    """Manage item tags."""
 
 
 @tags.command("list")
+@click.option("--item", "item_id", type=int, default=None, help="Filter by item ID")
 @click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
 @click.pass_context
-def tags_list(ctx, fmt):
-    """List all tags in use."""
-    from feedcli.ops import list_tags
+def tags_list(ctx, item_id, fmt):
+    """List distinct tags, optionally for a specific item."""
+    from feedcli.ops import list_item_tags
 
-    result = list_tags(session=ctx.obj["session"])
-    # table output needs list[dict]; json accepts list[str] as-is
+    result = list_item_tags(item_id=item_id, session=ctx.obj["session"])
     if fmt == "table":
         _output([{"tag": t} for t in result], fmt)
     else:
@@ -431,32 +515,32 @@ def tags_list(ctx, fmt):
 
 
 @tags.command("add")
-@click.argument("feed_id", type=int)
+@click.argument("item_id", type=int)
 @click.argument("tag")
 @click.pass_context
-def tags_add(ctx, feed_id, tag):
-    """Add a tag to a feed."""
-    from feedcli.ops import add_tag
+def tags_add(ctx, item_id, tag):
+    """Add a tag to an item."""
+    from feedcli.ops import tag_item
 
     try:
-        add_tag(feed_id, tag, session=ctx.obj["session"])
-        click.echo(json.dumps({"status": "ok", "feed_id": feed_id, "tag": tag}))
+        tag_item(item_id, tag, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "ok", "item_id": item_id, "tag": tag}))
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
 @tags.command("remove")
-@click.argument("feed_id", type=int)
+@click.argument("item_id", type=int)
 @click.argument("tag")
 @click.pass_context
-def tags_remove(ctx, feed_id, tag):
-    """Remove a tag from a feed."""
-    from feedcli.ops import remove_tag
+def tags_remove(ctx, item_id, tag):
+    """Remove a tag from an item."""
+    from feedcli.ops import untag_item
 
     try:
-        remove_tag(feed_id, tag, session=ctx.obj["session"])
-        click.echo(json.dumps({"status": "ok", "feed_id": feed_id, "tag_removed": tag}))
+        untag_item(item_id, tag, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "ok", "item_id": item_id, "tag_removed": tag}))
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -464,15 +548,48 @@ def tags_remove(ctx, feed_id, tag):
 
 @tags.command("show")
 @click.argument("tag")
+@click.option("--limit", type=int, default=50, help="Max items to return")
 @click.option("--format", "fmt", type=click.Choice(["json", "table"]), default="json")
 @click.pass_context
-def tags_show(ctx, tag, fmt):
-    """Show all feeds with a given tag."""
-    from feedcli.ops import get_feeds_by_tag
+def tags_show(ctx, tag, limit, fmt):
+    """Show all items with a given tag."""
+    from feedcli.ops import get_items_by_tag
 
-    result = get_feeds_by_tag(tag, session=ctx.obj["session"])
-    data = [_format_feed(f) for f in result]
+    result = get_items_by_tag(tag, limit=limit, session=ctx.obj["session"])
+    data = [_format_item(i) for i in result]
     _output(data, fmt)
+
+
+@tags.command("delete")
+@click.argument("tag")
+@click.option("--delete-items", is_flag=True, help="Also delete all items having this tag")
+@click.pass_context
+def tags_delete(ctx, tag, delete_items):
+    """Delete a tag entirely."""
+    from feedcli.ops import delete_tag
+
+    try:
+        delete_tag(tag, delete_items=delete_items, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "deleted", "tag": tag, "items_deleted": delete_items}))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@tags.command("rename")
+@click.argument("old_name")
+@click.argument("new_name")
+@click.pass_context
+def tags_rename(ctx, old_name, new_name):
+    """Rename a tag across all items."""
+    from feedcli.ops import rename_tag
+
+    try:
+        rename_tag(old_name, new_name, session=ctx.obj["session"])
+        click.echo(json.dumps({"status": "renamed", "old": old_name, "new": new_name}))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
 # --- OPML CLI ---
@@ -634,6 +751,7 @@ def db_restore_cmd(ctx, src_path, force):
     finally:
         # Recreate a fresh session bound to the restored DB.
         from feedcli.db import get_session as _get_session
+
         ctx.obj["session"] = _get_session()
 
 

@@ -23,12 +23,14 @@ def normalize_url(url: str) -> str:
     parsed = urlparse(url)
     # Remove fragment, normalize path
     path = parsed.path.rstrip("/") or "/"
-    normalized = urlunparse((
-        parsed.scheme or "https",
-        parsed.netloc,
-        path,
-        parsed.params,
-        parsed.query,
-        "",  # no fragment
-    ))
+    normalized = urlunparse(
+        (
+            parsed.scheme or "https",
+            parsed.netloc,
+            path,
+            parsed.params,
+            parsed.query,
+            "",  # no fragment
+        )
+    )
     return normalized

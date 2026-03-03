@@ -14,6 +14,13 @@ def db_session():
     """Create an in-memory SQLite session for testing."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
+
+    # Insert default category
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        conn.execute(text("INSERT OR IGNORE INTO categories (id, name) VALUES (1, 'default')"))
+
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session

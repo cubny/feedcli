@@ -111,8 +111,7 @@ def stop() -> None:
         pass  # Process already gone
     except PermissionError:
         raise RuntimeError(
-            f"Cannot stop daemon (PID {pid}): permission denied. "
-            "Is it owned by a different user?"
+            f"Cannot stop daemon (PID {pid}): permission denied. Is it owned by a different user?"
         )
     pid_path.unlink(missing_ok=True)
 

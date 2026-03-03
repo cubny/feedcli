@@ -10,6 +10,7 @@ def test_completion_bash():
     assert "_feedcli_completion()" in result.output
     assert "complete -o nosort -F _feedcli_completion feedcli" in result.output
 
+
 def test_completion_zsh():
     runner = CliRunner()
     result = runner.invoke(main, ["completion", "zsh"])
@@ -17,12 +18,14 @@ def test_completion_zsh():
     assert "_feedcli_completion()" in result.output
     assert "compdef _feedcli_completion feedcli" in result.output
 
+
 def test_completion_fish():
     runner = CliRunner()
     result = runner.invoke(main, ["completion", "fish"])
     assert result.exit_code == 0
     assert "function _feedcli_completion" in result.output
     assert "complete --no-files --command feedcli" in result.output
+
 
 def test_completion_invalid_shell():
     runner = CliRunner()

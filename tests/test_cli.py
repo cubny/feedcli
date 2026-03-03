@@ -94,9 +94,14 @@ class TestItemsCLI:
         session.add(feed)
         session.flush()
         item = Item(
-            feed_id=feed.id, guid="g1", title="Item 1", url="https://example.com/1",
-            summary="Summary", published_at=datetime(2024, 1, 1),
-            fetched_at=datetime.utcnow(), is_read=False,
+            feed_id=feed.id,
+            guid="g1",
+            title="Item 1",
+            url="https://example.com/1",
+            summary="Summary",
+            published_at=datetime(2024, 1, 1),
+            fetched_at=datetime.utcnow(),
+            is_read=False,
         )
         session.add(item)
         session.commit()
@@ -116,9 +121,15 @@ class TestItemsCLI:
         session.add(feed)
         session.flush()
         item = Item(
-            feed_id=feed.id, guid="g1", title="Item 1", url="https://example.com/1",
-            summary="Summary", content="Full content", published_at=datetime(2024, 1, 1),
-            fetched_at=datetime.utcnow(), is_read=False,
+            feed_id=feed.id,
+            guid="g1",
+            title="Item 1",
+            url="https://example.com/1",
+            summary="Summary",
+            content="Full content",
+            published_at=datetime(2024, 1, 1),
+            fetched_at=datetime.utcnow(),
+            is_read=False,
         )
         session.add(item)
         session.commit()
@@ -138,8 +149,12 @@ class TestItemsCLI:
         session.add(feed)
         session.flush()
         item = Item(
-            feed_id=feed.id, guid="g1", title="Item 1", url="https://example.com/1",
-            fetched_at=datetime.utcnow(), is_read=False,
+            feed_id=feed.id,
+            guid="g1",
+            title="Item 1",
+            url="https://example.com/1",
+            fetched_at=datetime.utcnow(),
+            is_read=False,
         )
         session.add(item)
         session.commit()
@@ -158,10 +173,15 @@ class TestItemsCLI:
         session.add(feed)
         session.flush()
         for i in range(3):
-            session.add(Item(
-                feed_id=feed.id, guid=f"g{i}", title=f"Item {i}",
-                fetched_at=datetime.utcnow(), is_read=False,
-            ))
+            session.add(
+                Item(
+                    feed_id=feed.id,
+                    guid=f"g{i}",
+                    title=f"Item {i}",
+                    fetched_at=datetime.utcnow(),
+                    is_read=False,
+                )
+            )
         session.commit()
         mock_get_session.return_value = session
 
@@ -177,14 +197,24 @@ class TestItemsCLI:
         feed = Feed(url="https://example.com/rss", title="Test", created_at=datetime.utcnow())
         session.add(feed)
         session.flush()
-        session.add(Item(
-            feed_id=feed.id, guid="g1", title="Unread",
-            fetched_at=datetime.utcnow(), is_read=False,
-        ))
-        session.add(Item(
-            feed_id=feed.id, guid="g2", title="Read",
-            fetched_at=datetime.utcnow(), is_read=True,
-        ))
+        session.add(
+            Item(
+                feed_id=feed.id,
+                guid="g1",
+                title="Unread",
+                fetched_at=datetime.utcnow(),
+                is_read=False,
+            )
+        )
+        session.add(
+            Item(
+                feed_id=feed.id,
+                guid="g2",
+                title="Read",
+                fetched_at=datetime.utcnow(),
+                is_read=True,
+            )
+        )
         session.commit()
         mock_get_session.return_value = session
 
