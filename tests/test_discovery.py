@@ -21,9 +21,7 @@ class TestDiscoverFeeds:
     @respx.mock
     def test_discover_from_html_link_tags(self, sample_page, sample_rss):
         """Should find feeds from <link> tags in HTML."""
-        respx.get("https://example.com/").mock(
-            return_value=httpx.Response(200, text=sample_page)
-        )
+        respx.get("https://example.com/").mock(return_value=httpx.Response(200, text=sample_page))
         respx.get("https://example.com/feed/rss.xml").mock(
             return_value=httpx.Response(200, text=sample_rss)
         )
@@ -50,9 +48,7 @@ class TestDiscoverFeeds:
     def test_discover_from_well_known_path(self, sample_rss):
         """Should fall back to well-known paths when HTML has no links."""
         html = "<html><head><title>No feeds</title></head><body></body></html>"
-        respx.get("https://example.com/").mock(
-            return_value=httpx.Response(200, text=html)
-        )
+        respx.get("https://example.com/").mock(return_value=httpx.Response(200, text=html))
         respx.get("https://example.com/feed.json").mock(
             return_value=httpx.Response(200, text=sample_rss)
         )

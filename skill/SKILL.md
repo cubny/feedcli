@@ -21,12 +21,14 @@ The main use case is a periodic digest cycle:
 |------|---------|------------|
 | `feeds_get_unread` | Get unread items for digest processing | `limit` (default 50) |
 | `feeds_mark_read` | Mark items as read after processing | `item_ids` (comma-separated) |
-| `feeds_add` | Subscribe to a new feed (auto-discovers from website URL) | `url`, `tag` (optional) |
-| `feeds_list` | List all subscribed feeds | `tag` (optional filter) |
+| `feeds_add` | Subscribe to a new feed (auto-discovers from website URL) | `url`, `category` (optional) |
+| `feeds_list` | List all subscribed feeds | `category` (optional filter) |
 | `feeds_refresh` | Fetch new items from all feeds | — |
 | `feeds_delete` | Remove a feed subscription | `feed_id` |
 | `feeds_get_items` | Get items with flexible filtering | `feed_id`, `unread_only`, `limit` |
 | `feeds_mark_all_read` | Mark all items (or all in a feed) as read | `feed_id` (optional) |
+| `items_tag` | Add a user-defined tag to an item | `item_id`, `tag` |
+| `items_by_tag` | List all items with a given tag | `tag`, `limit` (optional) |
 
 ### Extended tools (Phase 2+, when implemented)
 
@@ -43,8 +45,8 @@ The main use case is a periodic digest cycle:
 # Auto-discovers feed URL from any website
 feeds_add("https://blog.example.com")
 
-# Direct feed URL with a tag
-feeds_add("https://example.com/feed.xml", tag="tech")
+# Direct feed URL with a category
+feeds_add("https://example.com/feed.xml", category="tech")
 ```
 
 ### Digest processing
@@ -64,8 +66,18 @@ feeds_mark_read("42,43,44,45,46")
 # All feeds
 feeds_list()
 
-# Filtered by tag
-feeds_list(tag="tech")
+# Filtered by category
+feeds_list(category="tech")
+```
+
+### Item tagging
+```
+# Tag an item for future reference or organization
+items_tag(42, "urgent")
+items_tag(42, "ai-research")
+
+# Later, find items with a specific tag
+items_by_tag("ai-research")
 ```
 
 ## Design Constraints

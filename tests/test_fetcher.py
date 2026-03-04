@@ -13,7 +13,9 @@ from feedcli.models import Feed, Item
 @pytest.fixture
 def feed(db_session):
     """Create a feed in the test DB."""
-    f = Feed(url="https://example.com/feed.xml", title="Test Feed", created_at=datetime.now(timezone.utc))
+    f = Feed(
+        url="https://example.com/feed.xml", title="Test Feed", created_at=datetime.now(timezone.utc)
+    )
     db_session.add(f)
     db_session.commit()
     return f
@@ -64,9 +66,7 @@ class TestFetchFeed:
         feed.etag = '"abc123"'
         db_session.commit()
 
-        respx.get("https://example.com/feed.xml").mock(
-            return_value=httpx.Response(304)
-        )
+        respx.get("https://example.com/feed.xml").mock(return_value=httpx.Response(304))
         count = fetch_feed(feed, db_session)
         assert count == 0
         assert feed.last_error is None
@@ -74,9 +74,7 @@ class TestFetchFeed:
 
     @respx.mock
     def test_http_error_records_error(self, db_session, feed):
-        respx.get("https://example.com/feed.xml").mock(
-            return_value=httpx.Response(500)
-        )
+        respx.get("https://example.com/feed.xml").mock(return_value=httpx.Response(500))
         count = fetch_feed(feed, db_session)
         assert count == 0
         assert feed.last_error == "HTTP 500"
@@ -108,7 +106,9 @@ class TestFetchFeed:
     @respx.mock
     def test_updates_feed_title_from_parsed(self, db_session, sample_rss):
         """Feed with no title gets title from parsed feed."""
-        f = Feed(url="https://example.com/feed2.xml", title=None, created_at=datetime.now(timezone.utc))
+        f = Feed(
+            url="https://example.com/feed2.xml", title=None, created_at=datetime.now(timezone.utc)
+        )
         db_session.add(f)
         db_session.commit()
 

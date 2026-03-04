@@ -83,9 +83,7 @@ def fetch_feed(feed: Feed, session: Session, timeout: int = 30) -> int:
         existing = None
         if guid:
             existing = (
-                session.query(Item)
-                .filter(Item.feed_id == feed.id, Item.guid == guid)
-                .first()
+                session.query(Item).filter(Item.feed_id == feed.id, Item.guid == guid).first()
             )
         if not existing and entry_url:
             existing = (
