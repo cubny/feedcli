@@ -9,22 +9,36 @@ import pytest
 from feedcli.models import Feed, Item
 from feedcli.ops import (
     add_feed,
+    create_category,
+    delete_category,
     delete_feed,
     delete_item,
+    delete_tag,
     export_opml,
+    get_feed,
+    get_feeds_by_category,
     get_item,
     get_item_url,
     get_items,
+    get_items_by_tag,
     get_starred_items,
     get_unread_items,
     import_opml,
+    list_categories,
     list_feeds,
+    list_item_tags,
     mark_all_read,
     mark_read,
     mark_unread,
+    rename_category,
+    rename_tag,
+    reset_feed_category,
     search_items,
+    set_feed_category,
     star_item,
+    tag_item,
     unstar_item,
+    untag_item,
     update_feed,
 )
 
@@ -320,51 +334,37 @@ class TestGetItemsStarredOnly:
 
 class TestCategories:
     def test_list_categories_empty(self, db_session):
-        from feedcli.ops import list_categories
-
         assert list_categories(session=db_session) == ["default"]
 
     def test_create_category(self, db_session):
-        from feedcli.ops import create_category, list_categories
-
         create_category("tech", session=db_session)
         cats = list_categories(session=db_session)
         assert "tech" in cats
 
     def test_set_feed_category(self, db_session, feed_in_db):
-        from feedcli.ops import get_feed, set_feed_category
-
         set_feed_category(feed_in_db.id, "ai", session=db_session)
         feed = get_feed(feed_in_db.id, session=db_session)
         assert feed.category.name == "ai"
 
     def test_reset_feed_category(self, db_session, feed_in_db):
-        from feedcli.ops import get_feed, reset_feed_category, set_feed_category
-
         set_feed_category(feed_in_db.id, "ai", session=db_session)
         reset_feed_category(feed_in_db.id, session=db_session)
         feed = get_feed(feed_in_db.id, session=db_session)
         assert feed.category.name == "default"
 
     def test_get_feeds_by_category(self, db_session, feed_in_db):
-        from feedcli.ops import get_feeds_by_category, set_feed_category
-
         set_feed_category(feed_in_db.id, "ai", session=db_session)
         feeds = get_feeds_by_category("ai", session=db_session)
         assert len(feeds) == 1
         assert feeds[0].id == feed_in_db.id
 
     def test_delete_category(self, db_session, feed_in_db):
-        from feedcli.ops import delete_category, get_feed, set_feed_category
-
         set_feed_category(feed_in_db.id, "temp", session=db_session)
         delete_category("temp", session=db_session)
         feed = get_feed(feed_in_db.id, session=db_session)
         assert feed.category.name == "default"
 
     def test_rename_category(self, db_session, feed_in_db):
-        from feedcli.ops import get_feed, rename_category, set_feed_category
-
         set_feed_category(feed_in_db.id, "old", session=db_session)
         rename_category("old", "new", session=db_session)
         feed = get_feed(feed_in_db.id, session=db_session)
@@ -373,56 +373,40 @@ class TestCategories:
 
 class TestItemTags:
     def test_tag_item(self, db_session, items_in_db):
-        from feedcli.ops import list_item_tags, tag_item
-
         tag_item(items_in_db[0].id, "read-later", session=db_session)
         tags = list_item_tags(item_id=items_in_db[0].id, session=db_session)
         assert tags == ["read-later"]
 
     def test_tag_item_duplicate_noop(self, db_session, items_in_db):
-        from feedcli.ops import list_item_tags, tag_item
-
         tag_item(items_in_db[0].id, "read-later", session=db_session)
         tag_item(items_in_db[0].id, "read-later", session=db_session)
         tags = list_item_tags(item_id=items_in_db[0].id, session=db_session)
         assert tags == ["read-later"]
 
     def test_untag_item(self, db_session, items_in_db):
-        from feedcli.ops import list_item_tags, tag_item, untag_item
-
         tag_item(items_in_db[0].id, "read-later", session=db_session)
         untag_item(items_in_db[0].id, "read-later", session=db_session)
         assert list_item_tags(item_id=items_in_db[0].id, session=db_session) == []
 
     def test_get_items_by_tag(self, db_session, items_in_db):
-        from feedcli.ops import get_items_by_tag, tag_item
-
         tag_item(items_in_db[0].id, "urgent", session=db_session)
         items = get_items_by_tag("urgent", session=db_session)
         assert len(items) == 1
         assert items[0].id == items_in_db[0].id
 
     def test_delete_tag(self, db_session, items_in_db):
-        from feedcli.ops import delete_tag, get_items_by_tag, list_item_tags, tag_item
-
         tag_item(items_in_db[0].id, "temp", session=db_session)
         delete_tag("temp", session=db_session)
         assert list_item_tags(session=db_session) == []
         assert get_items_by_tag("temp", session=db_session) == []
 
     def test_delete_tag_with_items(self, db_session, items_in_db):
-        from feedcli.ops import delete_tag, tag_item
-
         tag_item(items_in_db[0].id, "delete-me", session=db_session)
         delete_tag("delete-me", delete_items=True, session=db_session)
-        from feedcli.models import Item
-
         item = db_session.get(Item, items_in_db[0].id)
         assert item.deleted is True
 
     def test_rename_tag(self, db_session, items_in_db):
-        from feedcli.ops import list_item_tags, rename_tag, tag_item
-
         tag_item(items_in_db[0].id, "old-tag", session=db_session)
         rename_tag("old-tag", "new-tag", session=db_session)
         assert list_item_tags(session=db_session) == ["new-tag"]

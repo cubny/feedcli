@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from datetime import datetime, timezone
 
@@ -770,8 +771,6 @@ def import_opml(file_path: str, session: Session | None = None) -> list[Feed]:
         except FeedAlreadyExistsError:
             continue  # Duplicate — skip silently
         except ValueError as e:
-            import logging
-
             logging.getLogger(__name__).warning("Skipping %s: %s", url, e)
             continue
     return feeds
