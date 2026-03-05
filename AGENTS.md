@@ -50,9 +50,8 @@ feedcli handles steps 1 and 4. Steps 2 and 3 happen in the consuming agent. feed
 | `feedcli/config.py` | XDG-compliant config loading with env var overrides |
 | `feedcli/utils.py` | Date parsing (`parse_date`) and URL normalization (`normalize_url`) |
 | `docs/spec.md` | Full implementation specification — **source of truth for design** |
-| `skill/SKILL.md` | Agent-facing skill documentation — how AI agents use feedcli |
-| `skill/skill.yaml` | Skill config (name + instruction) |
-| `skill/tools.py` | Callable tool functions wrapping `feedcli.ops`, returning plain strings |
+| `skills/feedcli/SKILL.md` | Agent-facing skill documentation — how AI agents use feedcli |
+| `skills/feedcli/tools.py` | Callable tool functions wrapping `feedcli.ops`, returning plain strings |
 | `tests/conftest.py` | Shared pytest fixtures: in-memory DB session, sample feed/HTML fixtures |
 
 ## ops/ API Surface (MVP)
@@ -82,17 +81,17 @@ mark_all_read(feed_id=None, session=None) -> int
 - **Mock HTTP with respx** (for httpx). Use `@respx.mock` decorator + `respx.get().mock()`. Never make real network calls in tests.
 - **Lint with ruff**. Run `ruff check .` before considering work done. Fix all errors.
 - **Don't add LLM dependencies**. feedcli must remain model-free. Intelligence belongs in the consuming agent, not here.
-- **Protect the `feedcli.ops` API surface**. AI agent skills import these functions directly. Signature changes require updating `skill/tools.py` and any downstream consumers.
+- **Protect the `feedcli.ops` API surface**. AI agent skills import these functions directly. Signature changes require updating `skills/feedcli/tools.py` and any downstream consumers.
 - **Mock patch paths**: When mocking ops internals in tests, patch at the domain module level (e.g., `feedcli.ops.feeds._discover_feeds`, `feedcli.ops.feeds.fetch_feed`), not at `feedcli.ops`.
 - **JSON is the default output format** for CLI commands. Human-readable table format is secondary.
 - **Update CLAUDE.md and AGENTS.md** after every significant change — new files, API changes, architecture decisions, lessons learned.
 
 ## How AI Agents Consume feedcli
 
-AI agents use a **skill plugin** (`skill/tools.py`) that imports from `feedcli.ops`:
+AI agents use a **skill plugin** (`skills/feedcli/tools.py`) that imports from `feedcli.ops`:
 
 ```python
-# skill/tools.py
+# skills/feedcli/tools.py
 from feedcli.ops import get_unread_items, mark_read, add_feed, list_feeds
 
 def feeds_get_unread(limit: int = 50) -> str:
