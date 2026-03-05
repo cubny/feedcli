@@ -76,7 +76,7 @@ def items_in_db(db_session, feed_in_db):
 
 
 class TestAddFeed:
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_add_feed_with_discovery(self, mock_discover, db_session):
         mock_discover.return_value = [
             {"url": "https://blog.example.com/feed.xml", "type": "rss20", "title": "Blog Feed"}
@@ -86,14 +86,14 @@ class TestAddFeed:
         assert feed.title == "Blog Feed"
         assert feed.website == "https://blog.example.com"
 
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_add_feed_no_discovery(self, mock_discover, db_session):
         mock_discover.return_value = []
         feed = add_feed("https://example.com/rss.xml", auto_discover=False, session=db_session)
         assert feed.url == "https://example.com/rss.xml"
         mock_discover.assert_not_called()
 
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_add_feed_custom_title(self, mock_discover, db_session):
         mock_discover.return_value = []
         feed = add_feed(
@@ -101,7 +101,7 @@ class TestAddFeed:
         )
         assert feed.title == "My Feed"
 
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_add_feed_duplicate_raises(self, mock_discover, db_session):
         from feedcli.ops import FeedAlreadyExistsError
 
@@ -189,7 +189,7 @@ class TestGetItems:
 
 
 class TestUpdateFeed:
-    @patch("feedcli.ops.fetch_feed")
+    @patch("feedcli.ops.feeds.fetch_feed")
     def test_update_feed(self, mock_fetch, db_session, feed_in_db):
         mock_fetch.return_value = 5
         count = update_feed(feed_in_db.id, session=db_session)
@@ -413,7 +413,7 @@ class TestItemTags:
 
 
 class TestImportExportOpml:
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_export_and_import(self, mock_discover, db_session, tmp_path):
         mock_discover.return_value = []
         # Create a feed
@@ -437,7 +437,7 @@ class TestImportExportOpml:
         assert len(imported) == 1
         assert imported[0].url == "https://example.com/feed.xml"
 
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_import_opml_skips_duplicates(self, mock_discover, db_session, tmp_path):
         """Duplicate feeds are silently skipped, not raised."""
         mock_discover.return_value = []
@@ -459,7 +459,7 @@ class TestImportExportOpml:
 
 
 class TestResetFeedErrors:
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_reset_feed_errors(self, mock_discover, db_session, feed_in_db):
         from feedcli.ops import reset_feed_errors
 
@@ -471,9 +471,9 @@ class TestResetFeedErrors:
         feed.last_error = "timeout"
         db_session.commit()
 
-        # fetch_feed is imported at the top of feedcli/ops.py, so patching
-        # feedcli.ops.fetch_feed correctly intercepts calls from update_feed.
-        with patch("feedcli.ops.fetch_feed", return_value=0):
+        # fetch_feed is imported at the top of feedcli/ops/feeds.py, so patching
+        # feedcli.ops.feeds.fetch_feed correctly intercepts calls from update_feed.
+        with patch("feedcli.ops.feeds.fetch_feed", return_value=0):
             reset_feed_errors(feed_in_db.id, session=db_session)
 
         from feedcli.models import Feed as FeedModel

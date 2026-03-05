@@ -20,7 +20,7 @@ def _make_session():
 
 class TestFeedsCLI:
     @patch("feedcli.cli.get_session")
-    @patch("feedcli.ops._discover_feeds")
+    @patch("feedcli.ops.feeds._discover_feeds")
     def test_feeds_add(self, mock_discover, mock_get_session):
         session = _make_session()
         mock_get_session.return_value = session
