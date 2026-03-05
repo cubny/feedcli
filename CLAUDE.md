@@ -62,7 +62,7 @@ feedcli is a **library-first CLI** — the CLI is a thin wrapper around the `fee
 
 - **`feedcli/utils.py`**: `parse_date()` (dateutil-based) and `normalize_url()` helpers.
 
-- **`skill/`**: AI agent skill plugin. Contains `SKILL.md` (agent-facing docs), `skill.yaml` (skill config), `tools.py` (callable functions that wrap `ops.py` and return plain strings).
+- **`skills/feedcli/`**: AI agent skill plugin. Contains `SKILL.md` (agent-facing docs with YAML frontmatter config) and `tools.py` (callable functions that wrap `feedcli.ops` and return plain strings).
 
 ### Key Patterns
 
