@@ -81,7 +81,7 @@ feedcli completion fish | source
 
 ## Documentation
 
-- [AI Agent Skill Documentation](skill/SKILL.md)
+- [AI Agent Skill Documentation](skills/feedcli/SKILL.md)
 
 ## License
 
