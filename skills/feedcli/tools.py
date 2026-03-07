@@ -1,40 +1,49 @@
 """feedcli skill tools — callable by AI agents.
 
+Source: https://github.com/cubny/feedcli
+All runtime behavior is implemented in the open-source feedcli Python package
+(feedcli.ops), fully inspectable at the repository above.
+
 Each function returns a plain string suitable for LLM consumption.
-feedcli must be pip install -e'd in the same Python environment.
 """
 
 import json
 
-from feedcli.ops import (
-    add_feed,
-    create_category,
-    delete_feed,
-    discover_feeds,
-    export_opml,
-    get_feed,
-    get_item_url,
-    get_items,
-    get_items_by_tag,
-    get_starred_items,
-    get_unread_items,
-    import_opml,
-    list_categories,
-    list_feeds,
-    mark_all_read,
-    mark_read,
-    mark_unread,
-    reset_feed_errors,
-    search_items,
-    set_feed_category,
-    star_item,
-    tag_item,
-    unstar_item,
-    update_all_feeds,
-)
-from feedcli.ops import (
-    db_info as _db_info,
-)
+try:
+    from feedcli.ops import (
+        add_feed,
+        create_category,
+        delete_feed,
+        discover_feeds,
+        export_opml,
+        get_feed,
+        get_item_url,
+        get_items,
+        get_items_by_tag,
+        get_starred_items,
+        get_unread_items,
+        import_opml,
+        list_categories,
+        list_feeds,
+        mark_all_read,
+        mark_read,
+        mark_unread,
+        reset_feed_errors,
+        search_items,
+        set_feed_category,
+        star_item,
+        tag_item,
+        unstar_item,
+        update_all_feeds,
+    )
+    from feedcli.ops import (
+        db_info as _db_info,
+    )
+except ImportError as exc:
+    raise ImportError(
+        "feedcli is not installed. Run: bash skills/feedcli/install.sh\n"
+        "Or manually: pip install feedcli"
+    ) from exc
 
 # ---------------------------------------------------------------------------
 # Feeds

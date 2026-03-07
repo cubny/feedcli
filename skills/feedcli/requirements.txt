@@ -1,0 +1,1 @@
+feedcli @ git+https://github.com/cubny/feedcli.git@v0.3.0

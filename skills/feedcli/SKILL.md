@@ -5,10 +5,15 @@ description: >-
   fetch new articles, search content, manage read/star state, organize
   with categories and tags — backed by a local SQLite database with
   zero LLM token cost for data operations.
-version: 0.2.0
+version: 0.3.0
 tags: rss, feeds, news, content, reader
 homepage: https://github.com/cubny/feedcli
-metadata: {"openclaw": {"requires": {"bins": ["python3", "pip"]}}}
+source: https://github.com/cubny/feedcli
+metadata:
+  openclaw:
+    requires:
+      bins: ["python3", "pip"]
+    install: "bash install.sh"
 ---
 
 # feedcli Skill
@@ -157,12 +162,28 @@ items_by_tag("ai-research")
 - **Item IDs are stable integers.** Use them for all mutation operations (mark read, star, tag).
 - **Feed discovery is automatic.** Pass a website URL to `feeds_add` and it will find the RSS/Atom feed. Use direct feed URLs only if discovery fails.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for full access declarations. In summary:
+
+- **Network**: Outbound HTTP(S) only — fetches user-provided feed URLs. No telemetry.
+- **Filesystem**: Read/write only to `$XDG_DATA_HOME/feedcli/feedcli.db`. OPML import/export uses user-specified paths.
+- **Credentials**: None required or stored.
+- **Privileges**: No elevated access, no background processes, no shell injection.
+- **Source code**: Fully open source at https://github.com/cubny/feedcli
+
 ## Setup
 
-feedcli must be installed in the same Python environment as the agent:
+Automatic installation:
 
 ```bash
-pip install -e /path/to/feedcli
+bash skills/feedcli/install.sh
+```
+
+Or manually:
+
+```bash
+pip install feedcli @ git+https://github.com/cubny/feedcli.git@v0.3.0
 ```
 
 The database is stored at `$XDG_DATA_HOME/feedcli/feedcli.db` (default: `~/.local/share/feedcli/feedcli.db`). No setup required — tables are created automatically on first use.
